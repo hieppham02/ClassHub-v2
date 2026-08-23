@@ -1,0 +1,23 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand: #0969c7;
+  --color-brand-dark: #07549f;
+  --color-ink: #102a43;
+  --color-mist: #f3f8fd;
+}
+
+:root {
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  color: #102a43;
+  background: #f3f8fd;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button, input, select {
+  font: inherit;
+}
