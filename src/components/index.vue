@@ -125,7 +125,7 @@ async function book(room) {
 
     if (response.ok) {
       selected.value = null;
-      window.location.href = '/lich-su-muon';
+      window.location.href = '/history';
     } else {
       const data = await response.json();
       alert(data.message || 'Lỗi hệ thống, không thể đặt phòng!');
@@ -171,11 +171,11 @@ async function book(room) {
 
         <nav class="hidden items-center gap-1 rounded-xl bg-blue-50 p-1 sm:flex" aria-label="Điều hướng">
           <a href="/" class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand shadow-sm">Trang chủ</a>
-          <a href="/lich-su-muon" class="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-brand">Lịch
+          <a href="/history" class="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-brand">Lịch
             sử mượn</a>
         </nav>
         <div class="hidden items-center gap-3 sm:flex">
-          <a href="/thong-tin-nguoi-dung" class="text-right hover:opacity-80">
+          <a href="/info" class="text-right hover:opacity-80">
             <p class="text-sm font-semibold text-ink">{{ user.name }}</p>
             <p class="text-xs text-slate-500">{{ user.role }}</p>
           </a>
@@ -278,8 +278,8 @@ async function book(room) {
       </a>
 
       <!-- Icon Lịch sử -->
-      <a href="/lich-su-muon"
-        :class="currentPath.includes('/lich-su') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
+      <a href="/history"
+        :class="currentPath.includes('/history') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
         class="flex flex-col items-center gap-1 transition hover:text-brand">
         <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -288,8 +288,8 @@ async function book(room) {
       </a>
 
       <!-- Icon Tài khoản -->
-      <a href="/thong-tin-nguoi-dung"
-        :class="currentPath.includes('/thong-tin') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
+      <a href="/info"
+        :class="currentPath.includes('/info') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
         class="flex flex-col items-center gap-1 transition hover:text-brand">
         <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round"

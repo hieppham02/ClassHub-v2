@@ -58,7 +58,7 @@ async function openDoor(id, otp) {
 
   const token = sessionStorage.getItem('classhub-token')
   try {
-    const response = await fetch(url + `/history/open-door/${id}`, {
+    const response = await fetch(url + `/cabinet/open-door/${id}`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -203,12 +203,12 @@ onMounted(() => {
           <a href="/" class="rounded-lg px-4 py-2 text-sm transition"
             :class="currentPath === '/' ? 'bg-white font-bold text-brand shadow-sm' : 'font-medium text-slate-500 hover:text-brand'">Trang
             chủ</a>
-          <a href="/lich-su-muon" class="rounded-lg px-4 py-2 text-sm transition"
-            :class="currentPath.includes('/lich-su') ? 'bg-white font-bold text-brand shadow-sm' : 'font-medium text-slate-500 hover:text-brand'">Lịch
+          <a href="/history" class="rounded-lg px-4 py-2 text-sm transition"
+            :class="currentPath.includes('/history') ? 'bg-white font-bold text-brand shadow-sm' : 'font-medium text-slate-500 hover:text-brand'">Lịch
             sử mượn</a>
         </nav>
         <div class="hidden items-center gap-3 sm:flex">
-          <a href="/thong-tin-nguoi-dung" class="text-right hover:opacity-80">
+          <a href="/info" class="text-right hover:opacity-80">
             <p class="text-sm font-semibold text-ink">{{ user.name }}</p>
             <p class="text-xs text-slate-500">{{ user.role }}</p>
           </a>
@@ -313,16 +313,16 @@ onMounted(() => {
         </svg>
         <span class="text-[10px]">Trang chủ</span>
       </a>
-      <a href="/lich-su-muon"
-        :class="currentPath.includes('/lich-su') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
+      <a href="/history"
+        :class="currentPath.includes('/history') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
         class="flex flex-col items-center gap-1 transition hover:text-brand">
         <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span class="text-[10px]">Lịch sử</span>
       </a>
-      <a href="/thong-tin-nguoi-dung"
-        :class="currentPath.includes('/thong-tin') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
+      <a href="/info"
+        :class="currentPath.includes('/info') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
         class="flex flex-col items-center gap-1 transition hover:text-brand">
         <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round"
