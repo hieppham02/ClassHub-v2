@@ -1,25 +1,34 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-
-const rooms = ref([])
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
+import Navbar from '@/components/Navbar.vue'
+import BottomNav from '@/components/BottomNav.vue'
 
 const url = import.meta.env.VITE_API_URL
-const building = ref('Tất cả tòa')
-const date = ref(new Date().toISOString().split('T')[0])
-const slot = ref('Chọn ca học')
-const danhSachCaHoc = [
-  'Ca 1 (07:00 - 09:30)',
-  'Ca 2 (09:40 - 12:10)',
-  'Ca 3 (13:00 - 15:30)',
-  'Ca 4 (15:40 - 18:10)',
-  'Ca 5 (18:10 - 20:40)'
-]
-const selected = ref(null)
-const booked = ref([])
-const showToast = ref(false)
 const currentPath = ref(window.location.pathname)
 const user = ref({ name: '', role: '' })
+
+const rooms = ref([])
+const activeBooking = ref(null) 
+const booked = ref([]) 
+
+const date = ref(new Date().toISOString().split('T')[0])
+const slot = ref('Chọn ca học')
+const danhSachCaHoc = ['Ca 1 (07:00 - 09:30)', 'Ca 2 (09:40 - 12:10)', 'Ca 3 (13:00 - 15:30)', 'Ca 4 (15:40 - 18:10)', 'Ca 5 (18:10 - 20:40)']
+const selectedBuilding = ref('Tất cả tòa')
+const selectedFloor = ref('Tất cả tầng')
+
+const selectedCabinet = ref(null)
+const otpValue = ref('')
+const delegateId = ref('')
+const confirmReturnId = ref(null)
 const showMissingSlotModal = ref(false)
+const showToast = ref(false)
+const toastMessage = ref('')
+const showErrorToast = ref(false)
+const errorMessage = ref('')
+const previewEquipment = ref(null)
+
+let pollingInterval = null 
 
 function logout() {
   sessionStorage.removeItem('classhub-token')
@@ -27,301 +36,438 @@ function logout() {
   window.location.href = '/login'
 }
 
+function showSuccessToast(msg) { toastMessage.value = msg; showToast.value = true; setTimeout(() => showToast.value = false, 3000) }
+function triggerError(msg) { errorMessage.value = msg; showErrorToast.value = true; setTimeout(() => showErrorToast.value = false, 3000) }
+function onDelegateInput(e) { delegateId.value = e.target.value.replace(/\D/g, '').slice(0, 8) }
+
 async function fetchRooms() {
   try {
     const token = sessionStorage.getItem('classhub-token')
-
-    const response = await fetch(url + '/rooms/get-rooms', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      if (response.status === 401) logout()
-      return
+    const response = await fetch(url + '/rooms/get-rooms', { headers: { 'Authorization': `Bearer ${token}` }})
+    if (response.ok) {
+      rooms.value = await response.json()
+      rooms.value.forEach(r => {
+        if(!r.equipment) {
+          r.equipment = [
+            { name: 'Máy chiếu', image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=300&auto=format&fit=crop&q=60' },
+            { name: 'Micro không dây', image: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=300&auto=format&fit=crop&q=60' },
+            { name: 'Bút laser', image: '' }
+          ]
+        }
+        if(!r.floor) r.floor = 'Tầng 1'
+        if(!r.building) r.building = 'Tòa EAUT'
+      })
     }
-
-    rooms.value = await response.json()
-  } catch (err) {
-    console.error('Lỗi tải danh sách phòng:', err)
-  }
+  } catch (err) { console.error('Lỗi tải phòng:', err) }
 }
 
-onMounted(() => {
-  const saved = sessionStorage.getItem('classhub-user')
-  const token = sessionStorage.getItem('classhub-token')
+async function fetchActiveSession() {
+  try {
+    const token = sessionStorage.getItem('classhub-token')
+    const response = await fetch(url + '/history/get-history', { headers: { 'Authorization': `Bearer ${token}` }})
+    if (response.ok) {
+      const history = await response.json()
+      const current = history.find(item => item.status === 'PENDING' || item.status === 'IN_USE')
+      activeBooking.value = current || null
+    }
+  } catch (err) { console.error('Lỗi tải session:', err) }
+}
 
-  if (token == null || saved == null) {
-    sessionStorage.removeItem('classhub-token')
-    sessionStorage.removeItem('classhub-user')
-    window.location.href = '/login'
+async function fetchBookedRooms() {
+  if (slot.value === 'Chọn ca học') {
+    booked.value = []
     return
   }
+  
+  const [year, month, day] = date.value.split('-')
+  const formattedDate = `${day}-${month}-${year}`
+  const caSo = parseInt(slot.value.match(/\d+/)[0])
 
-  if (saved && token) {
-    user.value = JSON.parse(saved)
-    if (user.value.role == "SINHVIEN") {
-      user.value.role = "Sinh viên";
+  try {
+    const token = sessionStorage.getItem('classhub-token')
+    const response = await fetch(`${url}/booking/get-booked-rooms?date=${formattedDate}&slot=${caSo}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (response.ok) {
+      booked.value = await response.json()
     }
-    if (user.value.role == "GIANGVIEN") {
-      user.value.role = "Giảng viên";
-    }
-  } else {
-    window.location.href = '/login'
-  }
+  } catch (err) { console.error('Lỗi tải phòng đã đặt:', err) }
+}
 
-  fetchRooms()
+watch([date, slot], () => { fetchBookedRooms() })
+
+const uniqueBuildings = computed(() => ['Tất cả tòa', ...new Set(rooms.value.map(r => r.building))])
+const uniqueFloors = computed(() => {
+  let filtered = rooms.value
+  if (selectedBuilding.value !== 'Tất cả tòa') filtered = filtered.filter(r => r.building === selectedBuilding.value)
+  return ['Tất cả tầng', ...new Set(filtered.map(r => r.floor))]
 })
 
-const filtered = computed(() =>
-  building.value === 'Tất cả tòa' ? rooms.value : rooms.value.filter(r => r.building === building.value)
-)
-
-const uniqueBuildings = computed(() => {
-  const buildings = new Set(rooms.value.map(r => r.building))
-  return ['Tất cả tòa', ...Array.from(buildings)]
+const filteredRooms = computed(() => {
+  return rooms.value.filter(r => {
+    const matchBuilding = selectedBuilding.value === 'Tất cả tòa' || r.building === selectedBuilding.value
+    const matchFloor = selectedFloor.value === 'Tất cả tầng' || r.floor === selectedFloor.value
+    return matchBuilding && matchFloor
+  })
 })
 
-const groupedRooms = computed(() => {
+const groupedByBuildingAndFloor = computed(() => {
   const groups = {}
-  filtered.value.forEach(room => {
-    if (!groups[room.building]) {
-      groups[room.building] = []
-    }
-    groups[room.building].push(room)
+  filteredRooms.value.forEach(room => {
+    const building = room.building || 'Chưa rõ tòa'
+    const floor = room.floor || 'Tầng 1'
+    if (!groups[building]) groups[building] = {}
+    if (!groups[building][floor]) groups[building][floor] = []
+    groups[building][floor].push(room)
   })
   return groups
 })
 
-async function book(room) {
-  if (slot.value === 'Chọn ca học') {
-    showMissingSlotModal.value = true
-    return;
+// MẶC ĐỊNH LÀ MÀU XANH NẾU CHƯA CHỌN CA
+function getCabinetStatus(cab) {
+  if (activeBooking.value && activeBooking.value.room === cab.id) return 'MINE'
+  if (cab.status === 'MAINTENANCE') return 'MAINTENANCE'
+  
+  if (slot.value === 'Chọn ca học') return 'AVAILABLE' 
+
+  if (booked.value.includes(cab.id) || cab.status === 'BOOKED') return 'BOOKED'
+  return 'AVAILABLE'
+}
+
+// BẮT BẤM KHI CHƯA CHỌN CA
+function handleCabinetClick(cab) {
+  const status = getCabinetStatus(cab)
+  
+  // Trừ cái tủ của chính mình ra, còn lại phải chọn ca học mới được bấm
+  if (slot.value === 'Chọn ca học' && status !== 'MINE') {
+    showMissingSlotModal.value = true 
+    return
   }
-
-  const [year, month, day] = date.value.split('-');
-  const ngayMuonFormat = `${day}-${month}-${year}`;
-
-  const caSo = parseInt(slot.value.match(/\d+/)[0]);
-
-  try {
-    const token = sessionStorage.getItem('classhub-token');
-
-    const response = await fetch(url + '/booking/dat-phong', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        maPhong: room.id,
-        ngayMuon: ngayMuonFormat,
-        caMuon: caSo
-      })
-    });
-
-    if (response.ok) {
-      selected.value = null;
-      window.location.href = '/history';
-    } else {
-      const data = await response.json();
-      alert(data.message || 'Lỗi hệ thống, không thể đặt phòng!');
-    }
-  } catch (err) {
-    console.error('Lỗi khi gọi API đặt phòng:', err);
-    alert('Không thể kết nối tới server');
+  
+  if (status === 'MINE' || status === 'AVAILABLE') {
+    selectedCabinet.value = cab
+    otpValue.value = ''
+  } else if (status === 'BOOKED') {
+    triggerError('Tủ thiết bị này đã có người đăng ký mượn!')
+  } else if (status === 'MAINTENANCE') {
+    triggerError('Tủ thiết bị này đang được bảo trì!')
   }
 }
 
+// --- HÀM CUỘN ĐẾN TỦ HIỆN TẠI ---
+async function scrollToMyCabinet() {
+  if (!activeBooking.value) return triggerError('Bạn hiện không có tủ nào đang mượn!')
+  const targetRoom = rooms.value.find(r => r.id === activeBooking.value.room)
+  if (targetRoom) {
+    selectedBuilding.value = 'Tất cả tòa'
+    selectedFloor.value = 'Tất cả tầng'
+  }
+  await nextTick() 
+  const el = document.getElementById(`cabinet-${activeBooking.value.room}`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('ring-4', 'ring-amber-500', 'scale-105')
+    setTimeout(() => { el.classList.remove('ring-4', 'ring-amber-500', 'scale-105') }, 2000)
+  } else {
+    triggerError('Không tìm thấy vị trí tủ trên bản đồ!')
+  }
+}
+
+// --- NGHIỆP VỤ ĐẶT PHÒNG ---
+async function book(room) {
+  if (slot.value === 'Chọn ca học') { showMissingSlotModal.value = true; return }
+  const [year, month, day] = date.value.split('-')
+  const caSo = parseInt(slot.value.match(/\d+/)[0])
+
+  try {
+    const token = sessionStorage.getItem('classhub-token')
+    const response = await fetch(url + '/booking/dat-phong', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maPhong: room.id, ngayMuon: `${day}-${month}-${year}`, caMuon: caSo })
+    })
+
+    if (response.ok) {
+      showSuccessToast('Đăng ký phòng thành công!')
+      await fetchActiveSession() 
+      await fetchBookedRooms() 
+    } else {
+      const data = await response.json()
+      triggerError(data.message || 'Lỗi đặt phòng!')
+    }
+  } catch (err) { triggerError('Không thể kết nối server') }
+}
+
+// --- NGHIỆP VỤ IOT ---
+async function openDoor() {
+  if (!otpValue.value) return triggerError('Vui lòng nhập OTP!')
+  const token = sessionStorage.getItem('classhub-token')
+  try {
+    const response = await fetch(url + `/history/open-door/${activeBooking.value.id}`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ otp: otpValue.value })
+    })
+    if (response.ok) {
+      showSuccessToast('Đã gửi lệnh mở cửa tủ!')
+      activeBooking.value.isCabinetOpen = true 
+    } else {
+      const data = await response.json()
+      triggerError(data?.message || 'Mã OTP sai')
+    }
+  } catch (err) { triggerError('Lỗi kết nối') }
+}
+
+async function resendOtp() {
+  const token = sessionStorage.getItem('classhub-token')
+  try {
+    const response = await fetch(url + `/history/refresh-otp/${activeBooking.value.id}`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (response.ok) showSuccessToast('Đã cấp lại OTP!')
+    else triggerError('Có lỗi khi cấp lại OTP')
+  } catch (err) { triggerError('Lỗi kết nối') }
+}
+
+async function returnRoom() {
+  const token = sessionStorage.getItem('classhub-token')
+  try {
+    const response = await fetch(`${url}/booking/return-room/${activeBooking.value.id}?room=${activeBooking.value.room}`, {
+      method: 'PUT', headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (response.ok) {
+      showSuccessToast('Trả thiết bị thành công')
+      confirmReturnId.value = null
+      selectedCabinet.value = null
+      activeBooking.value = null
+      otpValue.value = ''
+      await fetchBookedRooms() 
+    } else {
+      const data = await response.json()
+      triggerError(data.message || 'Có lỗi xảy ra')
+    }
+  } catch (err) { triggerError('Lỗi kết nối') }
+}
+
+// --- PHÂN QUYỀN ---
+async function delegateAccess() {
+  if (delegateId.value.length !== 8) return triggerError('Mã Sinh viên phải đúng 8 chữ số!')
+  const token = sessionStorage.getItem('classhub-token')
+  try {
+    const response = await fetch(url + `/history/delegate/${activeBooking.value.id}`, {
+      method: 'POST', 
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delegateId: delegateId.value })
+    })
+    if(response.ok) {
+       const data = await response.json()
+       showSuccessToast(data.message)
+       delegateId.value = ''
+    } else {
+       const data = await response.json()
+       triggerError(data.message)
+    }
+  } catch (err) { triggerError('Lỗi kết nối tới server!') }
+}
+
+async function revokeAccess() {
+  const token = sessionStorage.getItem('classhub-token')
+  try {
+    const response = await fetch(url + `/history/revoke/${activeBooking.value.id}`, {
+      method: 'POST', 
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if(response.ok) { showSuccessToast('Đã thu hồi quyền thành công!') }
+    else { const data = await response.json(); triggerError(data.message) }
+  } catch (err) { triggerError('Lỗi kết nối tới server!') }
+}
+
+onMounted(() => {
+  const token = sessionStorage.getItem('classhub-token')
+  const saved = sessionStorage.getItem('classhub-user')
+  if (!token || !saved) return logout()
+  
+  user.value = JSON.parse(saved)
+  fetchRooms()
+  fetchActiveSession()
+  fetchBookedRooms() 
+
+  pollingInterval = setInterval(() => {
+    fetchBookedRooms()
+    fetchActiveSession()
+  }, 3000)
+})
+
+onUnmounted(() => {
+  if(pollingInterval) clearInterval(pollingInterval)
+})
 </script>
 
 <template>
-  <div v-if="showMissingSlotModal"
-    class="fixed inset-0 z-[70] flex items-center justify-center bg-ink/40 p-5 backdrop-blur-sm"
-    @click.self="showMissingSlotModal = false">
+  <div v-if="showToast" class="fixed bottom-20 right-5 z-[90] rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-xl">✓ {{ toastMessage }}</div>
+  <div v-if="showErrorToast" class="fixed bottom-20 right-5 z-[90] rounded-xl bg-red-600 px-5 py-3 text-sm font-semibold text-white shadow-xl">✕ {{ errorMessage }}</div>
+
+  <button v-if="activeBooking" @click="scrollToMyCabinet" class="fixed bottom-20 right-5 z-[50] flex items-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-sm font-bold text-white shadow-2xl transition-all hover:bg-amber-600 animate-bounce sm:bottom-6">
+    <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+    Tủ hiện tại ({{ activeBooking.room }})
+  </button>
+
+  <div v-if="showMissingSlotModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-ink/40 p-5 backdrop-blur-sm" @click.self="showMissingSlotModal = false">
     <div class="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
-      <div class="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-        <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round"
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
+      <h2 class="text-xl font-bold text-ink">Vui lòng chọn ca học trước khi đăng ký</h2>
+      <button @click="showMissingSlotModal = false" class="mt-6 h-11 w-full rounded-xl bg-brand font-bold text-white transition hover:bg-brand-dark">Đã hiểu</button>
+    </div>
+  </div>
+
+  <div v-if="confirmReturnId" class="fixed inset-0 z-[70] flex items-center justify-center bg-ink/40 p-5 backdrop-blur-sm" @click.self="confirmReturnId = null">
+    <div class="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl">
+      <h2 class="text-xl font-bold text-ink">Xác nhận hoàn tất trả thiết bị</h2>
+      <div class="mt-6 flex gap-3">
+        <button @click="confirmReturnId = null" class="h-11 flex-1 rounded-xl border border-blue-100 font-semibold text-slate-500">Hủy</button>
+        <button @click="returnRoom" class="h-11 flex-1 rounded-xl bg-brand font-bold text-white">Xác nhận</button>
       </div>
-      <h2 class="text-xl font-bold text-ink">Vui lòng chọn ca học</h2>
-      <button @click="showMissingSlotModal = false; selected = null"
-        class="mt-6 h-11 w-full rounded-xl bg-brand font-bold text-white transition hover:bg-brand-dark">Đã
-        hiểu</button>
+    </div>
+  </div>
+
+  <div v-if="previewEquipment" class="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" @click.self="previewEquipment = null">
+    <div class="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
+      <h3 class="text-lg font-bold text-ink mb-4">{{ previewEquipment.name }}</h3>
+      <div class="overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 flex items-center justify-center min-h-[200px]">
+        <img v-if="previewEquipment.image" :src="previewEquipment.image" :alt="previewEquipment.name" class="max-h-[300px] w-auto object-contain" />
+        <div v-else class="text-slate-400 py-10 font-medium">Chưa có hình ảnh thực tế cho thiết bị này.</div>
+      </div>
+      <button @click="previewEquipment = null" class="mt-6 h-11 w-full rounded-xl bg-brand font-bold text-white">Đóng</button>
     </div>
   </div>
 
   <main class="min-h-screen bg-mist pb-20 sm:pb-0">
-    <header class="border-b border-blue-100 bg-white/90 backdrop-blur">
-      <div class="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
-        <a href="/" class="flex items-center gap-3">
-          <div class="flex size-11 items-center justify-center rounded-2xl bg-blue-50 ring-1 ring-blue-100">
-            <img src="https://eaut.edu.vn/favicon.ico" alt="Logo EAUT" class="size-8 object-contain" />
+    <Navbar :user="user" :currentPath="currentPath" @logout="logout" />
+
+    <div class="mx-auto max-w-7xl px-5 py-8 lg:px-8">
+      <section v-if="activeBooking" class="mb-8 rounded-3xl border border-amber-200 bg-amber-50 p-5 sm:p-6 shadow-sm">
+        <h3 class="flex items-center gap-2 text-lg font-bold text-amber-900">
+          <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+          Ủy quyền trả thiết bị
+        </h3>
+        <p class="mt-1 text-xs sm:text-sm text-amber-700">Phiếu mượn đang kích hoạt. Bạn có thể cấp quyền cho 1 sinh viên khác thao tác mở tủ và trả đồ thay mình.</p>
+        <div class="mt-4 flex flex-col sm:flex-row gap-3 max-w-2xl">
+          <input :value="delegateId" @input="onDelegateInput" type="text" placeholder="Nhập mã SV (8 số)..." maxlength="8" class="h-11 w-full sm:flex-1 rounded-xl border border-amber-200 px-4 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" />
+          <div class="flex gap-2 sm:gap-3 w-full sm:w-auto">
+            <button @click="delegateAccess" class="h-11 flex-1 sm:flex-none rounded-xl bg-amber-600 px-6 font-bold text-white transition hover:bg-amber-700">Giao quyền</button>
+            <button @click="revokeAccess" class="h-11 flex-1 sm:flex-none rounded-xl border border-amber-600 px-6 font-bold text-amber-700 bg-white transition hover:bg-amber-100">Thu hồi</button>
           </div>
-          <div>
-            <p class="font-bold tracking-tight text-brand">Class Hub</p>
-            <p class="text-xs text-slate-500">Đại học Công nghệ Đông Á</p>
-          </div>
-        </a>
-
-        <nav class="hidden items-center gap-1 rounded-xl bg-blue-50 p-1 sm:flex" aria-label="Điều hướng">
-          <a href="/" class="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand shadow-sm">Trang chủ</a>
-          <a href="/history" class="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-brand">Lịch
-            sử mượn</a>
-        </nav>
-        <div class="hidden items-center gap-3 sm:flex">
-          <a href="/info" class="text-right hover:opacity-80">
-            <p class="text-sm font-semibold text-ink">{{ user.name }}</p>
-            <p class="text-xs text-slate-500">{{ user.role }}</p>
-          </a>
-          <button type="button"
-            class="rounded-lg border border-blue-100 px-3 py-2 text-xs font-bold text-brand hover:bg-blue-50"
-            @click="logout">Đăng xuất</button>
-        </div>
-      </div>
-    </header>
-
-    <section class="mx-auto max-w-7xl px-5 pb-8 pt-10 lg:px-8 lg:pt-14">
-      <div
-        class="overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-dark via-brand to-sky-500 p-7 text-white shadow-xl shadow-blue-200 sm:p-10">
-        <div class="max-w-2xl">
-          <p class="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-blue-100">Không gian học tập của bạn</p>
-          <h1 class="text-3xl font-bold tracking-tight sm:text-5xl">Mượn phòng dễ dàng,<br /><span
-              class="text-cyan-100">học tập hiệu quả hơn.</span></h1>
-          <p class="mt-5 max-w-xl text-sm leading-6 text-blue-100">Chọn thời gian, tìm phòng phù hợp và đăng ký sử dụng
-            chỉ trong vài thao tác.</p>
-        </div>
-      </div>
-    </section>
-
-    <div class="mx-auto max-w-7xl px-5 pb-14 lg:px-8">
-      <section class="-mt-2 mb-9 rounded-2xl border border-blue-100 bg-white p-4 shadow-lg shadow-blue-100/60 sm:p-5">
-        <div class="grid gap-4 sm:grid-cols-3">
-          <label class="grid gap-2 text-sm font-semibold text-ink">Ngày mượn
-            <input v-model="date" type="date"
-              class="h-11 rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand" />
-          </label>
-          <label class="grid gap-2 text-sm font-semibold text-ink">Ca học
-            <select v-model="slot"
-              class="h-11 rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand">
-              <option disabled value="Chọn ca học">Chọn ca học</option>
-              <option v-for="(ca, index) in danhSachCaHoc" :key="index" :value="ca">
-                {{ ca }}
-              </option>
-            </select>
-          </label>
-          <label class="grid gap-2 text-sm font-semibold text-ink">Tòa nhà
-            <select v-model="building"
-              class="h-11 rounded-xl border border-blue-100 bg-mist px-3 text-sm outline-none focus:ring-2 focus:ring-brand">
-              <option v-for="b in uniqueBuildings" :key="b" :value="b">{{ b }}</option>
-            </select>
-          </label>
         </div>
       </section>
 
-      <template v-for="(roomsInBuilding, buildingName) in groupedRooms" :key="buildingName">
-        <div class="mb-5 mt-10 flex items-end justify-between first:mt-0">
-          <div>
-            <h2 class="mt-1 text-2xl font-bold text-ink">{{ buildingName }}</h2>
-          </div>
-          <span class="rounded-full bg-blue-100 px-3 py-1 text-sm font-semibold text-brand">{{ roomsInBuilding.length }}
-            phòng</span>
+      <section class="mb-8 rounded-2xl border border-blue-100 bg-white p-4 shadow-lg shadow-blue-100/60 sm:p-5">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label class="grid gap-2 text-sm font-semibold">Ngày mượn <input v-model="date" type="date" class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand" /></label>
+          <label class="grid gap-2 text-sm font-semibold">Ca học <select v-model="slot" class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand"><option disabled value="Chọn ca học">Chọn ca học</option><option v-for="ca in danhSachCaHoc" :key="ca" :value="ca">{{ ca }}</option></select></label>
+          <label class="grid gap-2 text-sm font-semibold">Tòa nhà <select v-model="selectedBuilding" @change="selectedFloor = 'Tất cả tầng'" class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand"><option v-for="b in uniqueBuildings" :key="b" :value="b">{{ b }}</option></select></label>
+          <label class="grid gap-2 text-sm font-semibold">Tầng <select v-model="selectedFloor" class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand"><option v-for="f in uniqueFloors" :key="f" :value="f">{{ f }}</option></select></label>
+        </div>
+      </section>
+
+      <section class="mb-10 rounded-3xl border border-blue-200 bg-white p-6 shadow-sm">
+        <div class="mb-8 flex flex-wrap gap-4 border-b border-blue-50 pb-5 text-xs font-semibold text-slate-500">
+          <div class="flex items-center gap-2"><span class="size-3 rounded-full bg-emerald-400"></span> Trống / Sẵn sàng</div>
+          <div class="flex items-center gap-2"><span class="size-3 rounded-full bg-slate-300"></span> Đã có người mượn</div>
+          <div class="flex items-center gap-2"><span class="size-3 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></span> Tủ của bạn (Click để thao tác)</div>
+          <div class="flex items-center gap-2"><span class="size-3 rounded-full bg-red-400"></span> Đang bảo trì</div>
         </div>
 
-        <div class="mb-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <article v-for="room in roomsInBuilding" :key="room.id"
-            class="group overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-100">
-            <div class="p-5">
-              <div class="mb-5 flex items-start justify-between">
-                <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">{{ room.floor }}</p>
-                  <h3 class="mt-1 text-xl font-bold text-ink">{{ room.name }}</h3>
-                </div>
-                <span
-                  :class="booked.includes(room.id) ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'"
-                  class="rounded-full px-2.5 py-1 text-xs font-semibold">{{ booked.includes(room.id) ? 'Đã đăng ký' :
-                    'Đang trống' }}</span>
-              </div>
-              <div class="mb-5 flex items-center gap-2 border-b border-blue-50 pb-4 text-sm text-slate-500">
-                <span class="text-lg">◉</span>Sức chứa <b class="text-ink">{{ room.capacity }} người</b>
-              </div>
-              <div class="mb-6 flex flex-wrap gap-2">
-                <span v-for="item in room.equipment" :key="item"
-                  class="rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-brand">{{ item }}</span>
-              </div>
-              <button :disabled="booked.includes(room.id)" @click="selected = room"
-                class="h-11 w-full rounded-xl bg-brand text-sm font-bold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">{{
-                  booked.includes(room.id) ? 'Đã đăng ký' : 'Đăng ký mượn phòng' }}</button>
+        <div v-if="Object.keys(groupedByBuildingAndFloor).length === 0" class="py-10 text-center text-slate-400">Không có thiết bị phù hợp bộ lọc.</div>
+
+        <div v-for="(floors, buildingName) in groupedByBuildingAndFloor" :key="buildingName" class="mb-12 last:mb-0">
+          <div class="mb-6 flex items-center gap-3 border-b-2 border-brand/20 pb-3">
+            <div class="flex size-8 items-center justify-center rounded-lg bg-brand-dark text-white shadow-md">
+              <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
             </div>
-          </article>
+            <h2 class="text-xl font-black uppercase text-brand">{{ buildingName }}</h2>
+          </div>
+
+          <div class="flex flex-col-reverse gap-8 px-2 sm:px-4">
+            <div v-for="(cabs, floorName) in floors" :key="floorName" class="border-b border-dashed border-blue-100 pb-8 last:border-0 last:pb-0">
+              <h3 class="mb-5 text-lg font-bold text-slate-400 uppercase tracking-wider">{{ floorName }}</h3>
+              
+              <div class="grid grid-cols-3 gap-x-4 gap-y-6 sm:grid-cols-6 lg:grid-cols-8">
+                <!-- XÓA class màu xám của UNSELECTED đi, giờ màu XANH là mặc định -->
+                <div v-for="cab in cabs" :key="cab.id" :id="`cabinet-${cab.id}`"
+                  @click="handleCabinetClick(cab)"
+                  class="relative flex flex-col items-center justify-between p-2 h-32 rounded-md border-b-8 transition-all cursor-pointer hover:-translate-y-1"
+                  :class="{
+                    'bg-amber-400 border-amber-600 shadow-[0_0_15px_rgba(245,158,11,0.6)] hover:shadow-[0_0_20px_rgba(245,158,11,0.8)]': getCabinetStatus(cab) === 'MINE',
+                    'bg-emerald-400 border-emerald-600 hover:shadow-lg': getCabinetStatus(cab) === 'AVAILABLE',
+                    'bg-slate-300 border-slate-400 opacity-60 hover:opacity-80': getCabinetStatus(cab) === 'BOOKED',
+                    'bg-red-400 border-red-600 opacity-80': getCabinetStatus(cab) === 'MAINTENANCE'
+                  }">
+                  <div class="w-full bg-white/40 rounded text-center text-[11px] font-black text-ink py-1 shadow-inner truncate px-1">{{ cab.name }}</div>
+                  <div class="flex flex-col gap-1 w-full px-3 opacity-30"><div class="h-1 w-full bg-black rounded-full"></div><div class="h-1 w-full bg-black rounded-full"></div><div class="h-1 w-full bg-black rounded-full"></div></div>
+                  <div class="absolute right-2 top-12 h-8 w-1.5 bg-white/70 rounded-full shadow-sm"></div>
+                  <div v-if="getCabinetStatus(cab) === 'MINE'" class="absolute -top-3 -right-2 bg-white rounded-full p-1.5 shadow-md animate-bounce text-brand ring-2 ring-brand"><svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </template>
+      </section>
     </div>
 
-    <!-- BOTTOM MENU BAR CHO MOBILE -->
-    <nav
-      class="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-blue-100 bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.05)] sm:hidden">
+    <!-- 4. MODAL CHI TIẾT TỦ -->
+    <div v-if="selectedCabinet" class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/60 p-4 sm:p-5 backdrop-blur-sm" @click.self="selectedCabinet = null; otpValue = ''">
+      <div class="w-full max-w-lg rounded-3xl bg-white shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        
+        <div class="bg-brand p-5 text-white flex justify-between items-center shrink-0">
+          <div>
+            <p class="text-xs uppercase tracking-widest text-blue-200">Chi tiết & Thao tác</p>
+            <h2 class="text-xl sm:text-2xl font-bold mt-1">Tủ thiết bị {{ selectedCabinet.name }}</h2>
+          </div>
+          <span v-if="activeBooking && activeBooking.room === selectedCabinet.id && activeBooking.isCabinetOpen" class="animate-pulse rounded-full bg-amber-300 px-3 py-1 text-xs font-bold text-amber-900">TỦ ĐANG MỞ</span>
+        </div>
 
-      <!-- Icon Trang chủ -->
-      <a href="/" :class="currentPath === '/' ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
-        class="flex flex-col items-center gap-1 transition hover:text-brand">
-        <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round"
-            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-        </svg>
-        <span class="text-[10px]">Trang chủ</span>
-      </a>
+        <div class="p-5 sm:p-6 overflow-y-auto flex-1">
+          <p class="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">Thiết bị có trong tủ (Bấm để xem ảnh)</p>
+          <div class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div v-for="item in selectedCabinet.equipment" :key="typeof item === 'object' ? item.name : item" 
+              @click="previewEquipment = typeof item === 'object' ? item : { name: item, image: '' }"
+              class="flex flex-col items-center gap-2 rounded-xl border border-blue-100 bg-slate-50 p-3 text-center cursor-pointer transition hover:border-brand hover:bg-blue-50/50">
+              <div class="flex size-12 items-center justify-center rounded-lg bg-white overflow-hidden shadow-sm border border-slate-200 text-brand font-bold text-lg">
+                {{ typeof item === 'object' ? item.name.charAt(0) : item.charAt(0) }}
+              </div>
+              <span class="text-xs font-semibold text-ink line-clamp-1">
+                {{ typeof item === 'object' ? item.name : item }}
+              </span>
+            </div>
+          </div>
 
-      <!-- Icon Lịch sử -->
-      <a href="/history"
-        :class="currentPath.includes('/history') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
-        class="flex flex-col items-center gap-1 transition hover:text-brand">
-        <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span class="text-[10px]">Lịch sử</span>
-      </a>
+          <template v-if="activeBooking && activeBooking.room === selectedCabinet.id">
+            <div class="border-t border-dashed border-blue-100 pt-6">
+              <p class="mb-3 text-sm font-bold uppercase tracking-wide text-slate-400">Thao tác mở khóa</p>
+              <div class="mb-6 flex flex-col sm:flex-row gap-2">
+                <input v-model="otpValue" type="text" placeholder="Nhập mã OTP..." maxlength="6" class="h-12 w-full sm:flex-1 rounded-xl border border-blue-200 bg-mist px-4 text-center text-lg font-bold tracking-widest text-ink outline-none focus:border-brand focus:ring-2" />
+                <div class="flex gap-2 w-full sm:w-auto">
+                  <button @click="resendOtp" class="h-12 w-14 sm:w-12 shrink-0 rounded-xl border border-blue-200 text-slate-500 hover:bg-blue-50 flex items-center justify-center" title="Gửi lại OTP">
+                    <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  </button>
+                  <button @click="openDoor" class="h-12 flex-1 sm:flex-none shrink-0 rounded-xl bg-ink px-6 font-bold text-white transition hover:bg-slate-800">Mở Khóa</button>
+                </div>
+              </div>
+              <button @click="confirmReturnId = activeBooking.id" class="h-12 w-full rounded-xl border-2 border-brand font-bold text-brand hover:bg-brand hover:text-white transition">Cất đồ & Hoàn tất trả</button>
+            </div>
+          </template>
 
-      <!-- Icon Tài khoản -->
-      <a href="/info"
-        :class="currentPath.includes('/info') ? 'text-brand font-bold' : 'text-slate-400 font-medium'"
-        class="flex flex-col items-center gap-1 transition hover:text-brand">
-        <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round"
-            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-        </svg>
-        <span class="text-[10px]">Tài khoản</span>
-      </a>
-
-    </nav>
-
-    <!-- Modal Popup -->
-    <div v-if="selected" class="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-5 backdrop-blur-sm"
-      @click.self="selected = null">
-      <div class="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-        <p class="text-sm font-semibold text-brand">CHI TIẾT PHÒNG</p>
-        <h2 class="mt-1 text-2xl font-bold text-ink">Phòng {{ selected.id }}</h2>
-        <p class="mt-4 leading-6 text-slate-500">{{ selected.building }} · {{ selected.floor }} · Sức chứa {{
-          selected.capacity }} người. Thiết bị: {{ selected.equipment.join(', ') }}.</p>
-        <div class="mt-6 flex gap-3">
-          <button @click="selected = null"
-            class="h-11 flex-1 rounded-xl border border-blue-100 font-semibold text-slate-500">Đóng</button>
-          <button @click="book(selected)" class="h-11 flex-1 rounded-xl bg-brand font-bold text-white">Xác nhận
-            mượn</button>
+          <template v-else>
+            <div class="border-t border-dashed border-blue-100 pt-6">
+              <div class="flex gap-2 items-center text-sm text-slate-500 mb-4">
+                <svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span>Đăng ký cho <b>{{ date }}</b> lúc <b>{{ slot }}</b></span>
+              </div>
+              <button @click="book(selectedCabinet)" class="h-12 w-full rounded-xl bg-brand text-sm font-bold text-white transition hover:bg-brand-dark shadow-md">Đăng ký mượn ngay</button>
+            </div>
+          </template>
         </div>
       </div>
     </div>
 
-    <!-- Toast Thông báo -->
-    <div v-if="showToast"
-      class="fixed bottom-20 right-5 z-[60] rounded-xl bg-ink px-5 py-3 text-sm font-semibold text-white shadow-xl sm:bottom-5"
-      role="status">
-      Đăng ký mượn phòng thành công.
-    </div>
+    <BottomNav :currentPath="currentPath" />
   </main>
 </template>
