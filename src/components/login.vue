@@ -6,10 +6,10 @@ const msv = ref('')
 const mk = ref('')
 const error = ref('')
 
-async function login() { 
-  if (!msv.value || !mk.value) { 
+async function login() {
+  if (!msv.value || !mk.value) {
     error.value = 'Vui lòng nhập đầy đủ thông tin.'
-    return 
+    return
   }
 
   try {
@@ -33,14 +33,14 @@ async function login() {
 
     sessionStorage.setItem('classhub-token', data.token)
     sessionStorage.setItem('classhub-user', JSON.stringify(data.user))
-    
+
+
     const userRole = data.user.role
     if (userRole === "ADMIN") {
       window.location.href = '/admin'
     } else {
       window.location.href = '/'
     }
-
   } catch (err) {
     console.error(err)
     error.value = 'Không thể kết nối đến máy chủ!'
