@@ -101,8 +101,10 @@ watch([date, slot], () => { fetchBookedRooms() })
 
 const uniqueBuildings = computed(() => ['Tất cả tòa', ...new Set(rooms.value.map(r => r.building))])
 const uniqueFloors = computed(() => {
-  let filtered = rooms.value
-  if (selectedBuilding.value !== 'Tất cả tòa') filtered = filtered.filter(r => r.building === selectedBuilding.value)
+let filtered = rooms.value
+  if (selectedBuilding.value !== 'Tất cả tòa') {
+      filtered = filtered.filter(r => r.building === selectedBuilding.value)
+  }
   return ['Tất cả tầng', ...new Set(filtered.map(r => r.floor))]
 })
 
@@ -201,7 +203,6 @@ async function book(room) {
   } catch (err) { triggerError('Không thể kết nối server') }
 }
 
-// --- NGHIỆP VỤ IOT ---
 async function openDoor() {
   if (!otpValue.value) return triggerError('Vui lòng nhập OTP!')
   const token = sessionStorage.getItem('classhub-token')
@@ -402,24 +403,33 @@ onUnmounted(() => {
         </div>
       </section>
 
+      <!-- Filter thực hiện tạo input cho ĐĂNG KÝ -->
       <section class="mb-8 rounded-2xl border border-blue-100 bg-white p-4 shadow-lg shadow-blue-100/60 sm:p-5">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <label class="grid gap-2 text-sm font-semibold">Ngày mượn <input v-model="date" type="date"
-              class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand" /></label>
-          <label class="grid gap-2 text-sm font-semibold">Ca học <select v-model="slot"
-              class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand">
+            
+          <label class="grid gap-2 text-sm font-semibold">Ngày mượn 
+            <input v-model="date" type="date" class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand" />
+          </label>
+
+          <label class="grid gap-2 text-sm font-semibold">Ca học 
+            <select v-model="slot" class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand">
               <option disabled value="Chọn ca học">Chọn ca học</option>
               <option v-for="ca in danhSachCaHoc" :key="ca" :value="ca">{{ ca }}</option>
-            </select></label>
-          <label class="grid gap-2 text-sm font-semibold">Tòa nhà <select v-model="selectedBuilding"
-              @change="selectedFloor = 'Tất cả tầng'"
-              class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand">
+            </select>
+          </label>
+
+          <label class="grid gap-2 text-sm font-semibold">Tòa nhà 
+            <select v-model="selectedBuilding" @change="selectedFloor = 'Tất cả tầng'" class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand">
               <option v-for="b in uniqueBuildings" :key="b" :value="b">{{ b }}</option>
-            </select></label>
-          <label class="grid gap-2 text-sm font-semibold">Tầng <select v-model="selectedFloor"
-              class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand">
+            </select>
+          </label>
+
+          <label v-if="selectedBuilding !== 'Tất cả tòa'" class="grid gap-2 text-sm font-semibold animate-fadeIn">Tầng 
+            <select v-model="selectedFloor" class="h-11 rounded-xl border border-blue-100 bg-mist px-3 outline-none focus:ring-2 focus:ring-brand">
               <option v-for="f in uniqueFloors" :key="f" :value="f">{{ f }}</option>
-            </select></label>
+            </select>
+          </label>
+
         </div>
       </section>
 
