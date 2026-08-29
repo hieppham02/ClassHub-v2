@@ -34,11 +34,6 @@ const menuItems = [
     label: 'Lịch sử mượn trả',
     href: '/admin/history',
     icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />`
-  },
-  {
-    label: 'Thống kê',
-    href: '/admin/statistics',
-    icon: `<path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />`
   }
 ]
 
@@ -51,11 +46,11 @@ function isActive(item) {
 
 <template>
   <!-- ═══════════════════════════════════════════════════ -->
-  <!-- DESKTOP SIDEBAR (hidden on mobile)                  -->
+  <!-- DESKTOP SIDEBAR (Cố định sticky top-0, không cuộn)  -->
   <!-- ═══════════════════════════════════════════════════ -->
-  <aside class="hidden sm:flex flex-col w-60 shrink-0 min-h-screen bg-white border-r border-blue-100">
+  <aside class="hidden sm:flex flex-col w-60 shrink-0 h-screen sticky top-0 bg-white border-r border-blue-100 overflow-y-auto">
     <!-- Logo -->
-    <div class="flex items-center gap-3 px-5 py-5 border-b border-blue-50">
+    <div class="flex items-center gap-3 px-5 py-5 border-b border-blue-50 shrink-0">
       <div class="flex size-10 items-center justify-center rounded-2xl bg-blue-50 ring-1 ring-blue-100 shrink-0">
         <img src="https://eaut.edu.vn/favicon.ico" class="size-7 object-contain" alt="Logo" />
       </div>
@@ -63,6 +58,23 @@ function isActive(item) {
         <p class="font-bold text-brand text-sm leading-tight">Class Hub</p>
         <p class="text-[11px] text-slate-400 truncate">Quản trị hệ thống</p>
       </div>
+    </div>
+
+    <!-- Admin info + logout (Đã được đẩy lên phía trên dưới logo) -->
+    <div class="border-b border-blue-50 p-3 shrink-0">
+      <div class="mb-2 px-3 py-2 rounded-xl bg-blue-50">
+        <p class="text-xs font-bold text-ink truncate">{{ adminName || 'Admin' }}</p>
+        <p class="text-[10px] text-slate-400 mt-0.5">Quản trị viên</p>
+      </div>
+      <button
+        @click="emit('logout')"
+        class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-50 transition-all"
+      >
+        <svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        Đăng xuất
+      </button>
     </div>
 
     <!-- Menu -->
@@ -81,23 +93,6 @@ function isActive(item) {
         {{ item.label }}
       </router-link>
     </nav>
-
-    <!-- Admin info + logout -->
-    <div class="border-t border-blue-50 p-3">
-      <div class="mb-2 px-3 py-2 rounded-xl bg-blue-50">
-        <p class="text-xs font-bold text-ink truncate">{{ adminName || 'Admin' }}</p>
-        <p class="text-[10px] text-slate-400 mt-0.5">Quản trị viên</p>
-      </div>
-      <button
-        @click="emit('logout')"
-        class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-50 transition-all"
-      >
-        <svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
-        Đăng xuất
-      </button>
-    </div>
   </aside>
 
   <!-- ═══════════════════════════════════════════════════ -->
@@ -116,4 +111,3 @@ function isActive(item) {
     </router-link>
   </nav>
 </template>
-
