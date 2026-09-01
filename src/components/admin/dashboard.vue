@@ -5,12 +5,11 @@ import VueApexCharts from 'vue3-apexcharts'
 import * as signalR from '@microsoft/signalr'
 
 const url = import.meta.env.VITE_API_URL || 'http://localhost:5146/api'
-const hubUrl = url.replace('/api', '')
+const hubUrl = url.replace(/\/api\/?$/, '')
 
 const activeTimeFilter = ref('Today')
 const isLoading = ref(false)
 
-// State dữ liệu thống kê từ API
 const stats = ref({
   totalBorrows: 0,
   totalCabinets: 0,
@@ -25,10 +24,10 @@ const topBorrowers = ref([])
 const recentActivities = ref([])
 
 let hubConnection = null
+let debounceTimer = null
 
-// Hàm gọi API lấy dữ liệu tổng quan
-async function fetchDashboardData() {
-  isLoading.value = true
+async function fetchDashboardData(showLoading = true) {
+  if (showLoading) isLoading.value = true
   const token = sessionStorage.getItem('classhub-token')
   const headers = { 
     'Content-Type': 'application/json', 
@@ -37,9 +36,9 @@ async function fetchDashboardData() {
 
   try {
     const [resOverview, resTop, resAct] = await Promise.all([
-      fetch(`${url}/admin/statistics/overview?timeFilter=${activeTimeFilter.value}`, { headers }),
-      fetch(`${url}/admin/statistics/top-borrowers`, { headers }),
-      fetch(`${url}/admin/statistics/recent-activities`, { headers })
+      fetch(`${url}/admin/dashboard/overview?timeFilter=${activeTimeFilter.value}`, { headers }),
+      fetch(`${url}/admin/dashboard/top-borrowers`, { headers }),
+      fetch(`${url}/admin/dashboard/recent-activities`, { headers })
     ])
 
     if (resOverview.ok) {
@@ -55,41 +54,43 @@ async function fetchDashboardData() {
   } catch (err) {
     console.error('Lỗi khi tải dữ liệu dashboard:', err)
   } finally {
-    isLoading.value = false
+    if (showLoading) isLoading.value = false
   }
 }
 
-// Tự động gọi lại API khi đổi bộ lọc thời gian
-watch(activeTimeFilter, () => fetchDashboardData())
+watch(activeTimeFilter, () => fetchDashboardData(true))
 
-// KHỞI TẠO REALTIME SIGNALR
 onMounted(async () => {
-  await fetchDashboardData()
+  await fetchDashboardData(true)
 
   hubConnection = new signalR.HubConnectionBuilder()
     .withUrl(`${hubUrl}/hub/cabinet`)
     .withAutomaticReconnect()
     .build()
 
-  // Bất kỳ sự kiện nào xảy ra ở tủ IoT -> Tự động load lại số liệu Realtime
+  // Lắng nghe SignalR và cập nhật mượt mà (Debounce 3 giây tránh spam khi có nhiều thiết bị gửi ping)
   hubConnection.on('CabinetStatusChanged', (data) => {
-    console.log('⚡ [Dashboard Realtime Sync]:', data)
-    fetchDashboardData()
+    console.log('[Dashboard Realtime Sync]:', data)
+    
+    clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(() => {
+      fetchDashboardData(false) // Cập nhật ngầm không giật màn hình
+    }, 1500)
   })
 
   try {
     await hubConnection.start()
-    console.log('Dashboard đã kết nối Realtime SignalR thành công!')
+    console.log('Dashboard da ket noi Realtime SignalR!')
   } catch (err) {
-    console.error('Kết nối Realtime SignalR thất bại:', err)
+    console.error('Ket noi Realtime SignalR that bai:', err)
   }
 })
 
 onUnmounted(() => {
   if (hubConnection) hubConnection.stop()
+  clearTimeout(debounceTimer)
 })
 
-// Cấu hình Biểu đồ Area Chart
 const chartOptions = computed(() => ({
   chart: { type: 'area', toolbar: { show: false }, zoom: { enabled: false }, fontFamily: 'inherit' },
   dataLabels: { enabled: false },
@@ -112,7 +113,6 @@ const chartOptions = computed(() => ({
 
 const chartSeries = computed(() => [{ name: 'Lượt mượn', data: chartData.value }])
 
-// Cấu hình Biểu đồ Donut Chart (Trạng thái tủ)
 const donutOptions = computed(() => ({
   chart: { type: 'donut', fontFamily: 'inherit' },
   labels: ['Sẵn sàng (Trống)', 'Đang mượn', 'Bảo trì'],
@@ -146,10 +146,10 @@ const donutSeries = computed(() => {
         <div class="flex items-center justify-between">
           <div>
             <p class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Class Hub Admin</p>
-            <h1 class="mt-0.5 text-2xl font-black text-ink">Tổng quan hệ thống</h1>
+            <h1 class="mt-0.5 text-2xl font-black text-slate-800">Tổng quan hệ thống</h1>
           </div>
           <button 
-            @click="fetchDashboardData" 
+            @click="fetchDashboardData(true)" 
             :disabled="isLoading"
             class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition shadow-sm disabled:opacity-60"
           >
@@ -204,16 +204,14 @@ const donutSeries = computed(() => {
             <p class="mt-1 text-[11px] text-slate-400">Lượt mượn trong ngày</p>
           </div>
           <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col justify-between">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bảo trì</p>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Bảo trì / Mất mạng</p>
             <p class="text-2xl sm:text-3xl font-bold text-red-600 mt-3 tracking-tight">{{ stats.maintenance }}</p>
-            <p class="mt-1 text-[11px] text-slate-400">Phòng/tủ đang bảo trì</p>
+            <p class="mt-1 text-[11px] text-slate-400">Phòng/tủ cần kiểm tra</p>
           </div>
         </div>
 
         <!-- 2 Biểu đồ ApexCharts -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          
-          <!-- Area Chart -->
           <div class="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between">
             <div>
               <div class="flex items-center justify-between mb-4">
@@ -230,7 +228,6 @@ const donutSeries = computed(() => {
             </div>
           </div>
 
-          <!-- Donut Chart -->
           <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col justify-between">
             <div class="flex items-center justify-between mb-2">
               <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700">Trạng thái tủ đồ</h2>
@@ -245,8 +242,6 @@ const donutSeries = computed(() => {
 
         <!-- Bảng xếp hạng & Hoạt động gần đây -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          
-          <!-- Top Borrowers -->
           <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col h-[360px]">
             <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 mb-4 shrink-0">Xếp hạng lượt mượn của người dùng</h2>
             <div class="flex-1 overflow-y-auto pr-2 flex flex-col gap-3 scrollbar-thin scrollbar-thumb-slate-200">
@@ -276,7 +271,6 @@ const donutSeries = computed(() => {
             </div>
           </div>
 
-          <!-- Recent Activities -->
           <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm flex flex-col h-[360px]">
             <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 mb-4 shrink-0">Hoạt động gần đây</h2>
             <div class="flex-1 overflow-y-auto pr-2 flex flex-col gap-3.5 scrollbar-thin scrollbar-thumb-slate-200">
@@ -296,13 +290,11 @@ const donutSeries = computed(() => {
                     {{ activity.user }} <span class="font-normal text-slate-500">thực hiện</span> <span class="font-bold text-slate-700">{{ activity.action }}</span>
                   </p>
                   
-                  <!-- Metadata Pill Badges (Details, Time, IP, User-Agent) -->
                   <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
                     <span class="text-slate-600 font-medium">{{ activity.details }}</span>
                     <span>•</span>
                     <span class="text-slate-400">{{ activity.time }}</span>
                     
-                    <!-- IP Badge -->
                     <span 
                       v-if="activity.ip_address" 
                       class="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 border border-slate-200/60"
@@ -310,7 +302,6 @@ const donutSeries = computed(() => {
                       IP: {{ activity.ip_address }}
                     </span>
 
-                    <!-- User-Agent (OS) Badge -->
                     <span 
                       v-if="activity.user_agent" 
                       class="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100"
