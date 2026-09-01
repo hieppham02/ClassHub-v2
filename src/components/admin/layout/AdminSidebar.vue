@@ -45,9 +45,6 @@ function isActive(item) {
 </script>
 
 <template>
-  <!-- ═══════════════════════════════════════════════════ -->
-  <!-- DESKTOP SIDEBAR (Cố định sticky top-0, không cuộn)  -->
-  <!-- ═══════════════════════════════════════════════════ -->
   <aside class="hidden sm:flex flex-col w-60 shrink-0 h-screen sticky top-0 bg-white border-r border-blue-100 overflow-y-auto">
     <!-- Logo -->
     <div class="flex items-center gap-3 px-5 py-5 border-b border-blue-50 shrink-0">
@@ -58,23 +55,6 @@ function isActive(item) {
         <p class="font-bold text-brand text-sm leading-tight">Class Hub</p>
         <p class="text-[11px] text-slate-400 truncate">Quản trị hệ thống</p>
       </div>
-    </div>
-
-    <!-- Admin info + logout (Đã được đẩy lên phía trên dưới logo) -->
-    <div class="border-b border-blue-50 p-3 shrink-0">
-      <div class="mb-2 px-3 py-2 rounded-xl bg-blue-50">
-        <p class="text-xs font-bold text-ink truncate">{{ adminName || 'Admin' }}</p>
-        <p class="text-[10px] text-slate-400 mt-0.5">Quản trị viên</p>
-      </div>
-      <button
-        @click="emit('logout')"
-        class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-50 transition-all"
-      >
-        <svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-        </svg>
-        Đăng xuất
-      </button>
     </div>
 
     <!-- Menu -->
@@ -93,11 +73,25 @@ function isActive(item) {
         {{ item.label }}
       </router-link>
     </nav>
-  </aside>
 
-  <!-- ═══════════════════════════════════════════════════ -->
-  <!-- MOBILE BOTTOM BAR (visible on mobile only)          -->
-  <!-- ═══════════════════════════════════════════════════ -->
+    <!-- Admin info + logout -->
+    <div class="border-b border-blue-50 p-3 shrink-0">
+      <div class="mb-2 px-3 py-2 rounded-xl bg-blue-50">
+        <p class="text-xs font-bold text-ink truncate">{{ adminName || 'Admin' }}</p>
+        <p class="text-[10px] text-slate-400 mt-0.5">Quản trị viên</p>
+      </div>
+      <button
+        @click="emit('logout')"
+        class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-50 transition-all"
+      >
+        <svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        Đăng xuất
+      </button>
+    </div>
+  </aside>
+  
   <nav class="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t border-blue-100 bg-white pb-safe">
     <router-link
       v-for="item in menuItems"

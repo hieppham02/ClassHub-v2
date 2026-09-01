@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 @import 'tailwindcss';
 
 @theme {
@@ -5,10 +6,12 @@
   --color-brand-dark: #07549f;
   --color-ink: #102a43;
   --color-mist: #f3f8fd;
+  
+  --font-sans: 'Inter', system-ui, sans-serif;
 }
 
 :root {
-  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-family: var(--font-sans);
   color: #102a43;
   background: #f3f8fd;
 }
